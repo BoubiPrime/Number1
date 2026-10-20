@@ -1,9 +1,8 @@
-# RaceLab v1.0 — GitHub Pages
+# RaceLab v2.0 Pro Edition
 
-Compilation statique issue de BoubiPrime/Number1, commit 842f855.
-Construite avec `npm run build -- --base=/Number1/`.
+Compilation statique du commit source `e291a25c4e3d12e83c487f3f59ee1e5965aa339a` de BoubiPrime/Number1.
+Build : `npm run build` avec base `/Number1/`.
 
-Pour activer : Settings > Pages > Deploy from a branch > gh-pages > /(root) > Save.
-La disponibilité de Pages dépend de la visibilité du dépôt et de l’offre GitHub.
-
-Aucune donnée personnelle du navigateur n’est incluse. Les sessions restent dans le LocalStorage de chaque visiteur.
+Les anciennes ressources hachées sont conservées pour les onglets déjà ouverts.
+Les données personnelles restent dans le navigateur sous `racelab.sessions.v1`.
+Exporter un JSON et fermer les anciens onglets avant de passer de la v1 à la v2.
