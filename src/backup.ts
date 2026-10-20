@@ -1,8 +1,8 @@
 import { isSessions, type Session } from "./model";
-export const FORMAT_VERSION = 1;
+export const FORMAT_VERSION = 2;
 export const MAX_BACKUP_BYTES = 10 * 1024 * 1024;
 export interface Backup {
-  formatVersion: 1;
+  formatVersion: 1 | 2;
   exportedAt: string;
   sessions: Session[];
 }
@@ -25,7 +25,7 @@ export function parseBackup(text: string): Backup {
   if (!data || typeof data !== "object" || Array.isArray(data))
     throw new Error("Structure de sauvegarde invalide.");
   const value = data as Record<string, unknown>;
-  if (value.formatVersion !== FORMAT_VERSION)
+  if (value.formatVersion !== 1 && value.formatVersion !== FORMAT_VERSION)
     throw new Error(
       "Version de sauvegarde non prise en charge. Aucune donnée n’a été modifiée.",
     );

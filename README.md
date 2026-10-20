@@ -1,139 +1,134 @@
-# RaceLab v1.0 — Motorsport Analytics
+# RaceLab v2.0 Pro Edition
 
-Application React + TypeScript + Vite, Tailwind CSS, Recharts et Lucide React. Interface en français, responsive, sans backend, API, compte ou connexion à un simulateur.
+Analyse de chronos simracing dans le navigateur : React, TypeScript, Vite, Tailwind CSS, Recharts et Lucide. Aucun compte, backend ou service de télémétrie. Le site public reste en v1 tant que la publication v2 n’a pas été autorisée et effectuée.
 
-## Installation et lancement
+## Fonctionnalités
 
-Pour le développement local, Node.js 24 LTS et npm sont nécessaires. Pour utiliser la version hébergée, seul un navigateur est nécessaire.
+- Dashboard : sessions, tours, records séparés par circuit/configuration, dernière session et indicateur de progression à voiture et jeu identiques.
+- Sessions : création, consultation, modification, suppression confirmée, historique avec recherche, filtres et pagination de 50 sessions.
+- Tours : chronos manuels, édition, suppression, validité et écarts au meilleur. Formats `1:37.317` ou `97.317` avec trois décimales ; calculs en millisecondes entières.
+- Graphiques interactifs : chronos exacts, écarts, marqueurs invalides rouges, meilleurs tours verts et plage ajustable au-delà de 60 tours. Tous les tours restent enregistrés.
+- Consistency Analysis : moyenne, amplitude, écart-type de population, pourcentage de validité et évolution descriptive du rythme.
+- Sector Analysis : S1/S2/S3 facultatifs, meilleurs secteurs, tour idéal théorique et tableau détaillé.
+- Driver Progress : meilleurs chronos, moyennes, régularité, gain en secondes et pourcentage ; filtres par configuration de circuit, voiture et jeu.
+- Comparaison avancée : deux sessions compatibles, deux courbes, tableau tour par tour, secteurs, idéal et écarts de performance. Les différences de contexte et les conditions inconnues sont signalées.
+- Personal Records : référence valide par circuit/configuration, voiture, jeu, date et session source.
+- Import/export JSON, import CSV prévisualisé et protection contre les conflits entre onglets.
 
-```sh
-npm ci
-npm run dev
-```
+Les démos sont fictives, signalées et supprimables avec confirmation. Les données personnelles ne sont jamais ajoutées au code public. Aucune vitesse, trajectoire, pression de pneus ou mesure de freinage n’est inventée.
 
-Ouvrir l’adresse affichée par Vite (port 5173 par défaut).
+## Données, compatibilité et secteurs
 
-```sh
-npm run typecheck # vérification TypeScript seule
-npm test          # tests unitaires des chronos, statistiques et données
-npm run build    # contrôle TypeScript et compilation de production
-npm run preview  # servir la compilation localement
-```
+La clé existante **`racelab.sessions.v1` est conservée**. Les identifiants, tours et champs additionnels restent en place. Aucune migration destructive ni remplacement des données existantes n’est effectué au chargement.
 
-Pour un cache npm non accessible : `npm ci --cache /tmp/racelab-npm`.
+Le modèle ajoute uniquement des champs facultatifs :
 
-## Utilisation
+- `Session.layout?: string` : configuration (GP, National, tracé 2024…).
+- `Lap.sectors?: [number, number, number]` : trois millisecondes entières positives.
+- `Lap.csvSource?: string` : provenance utilisée pour détecter un réimport après renumérotation.
 
-- Le dashboard sépare les records personnels par circuit et affiche la dernière session et les sessions récentes.
-- Créer une session, puis saisir des tours avec exactement trois décimales : `1:37.317`, `97.317`, `2:05.840`.
-- Depuis le détail, « Modifier la session » permet de corriger circuit, voiture, jeu, date et type sans changer son identifiant ni perdre ses tours. Project Motor Racing et F1 24 font partie des suggestions de jeux.
-- Chaque tour peut être modifié avec le bouton crayon, marqué valide ou invalide et supprimé. L’édition conserve son identifiant et son numéro ; une annulation laisse les données inchangées. Les numéros sont recalculés après suppression.
-- Les tours invalides sont visibles dans le graphique (croix rose) mais exclus des records, moyennes, amplitudes et écarts-types. Leur écart au meilleur reste consultable hors classement.
-- L’écart-type est celui de la population des tours valides. Avec un seul tour, il vaut zéro ; sans tour valide, les statistiques affichent un tiret.
-- Dans l’historique, rechercher par circuit, filtrer par jeu et cocher deux sessions du même circuit pour les comparer. Les différences de voiture sont signalées ; les conditions peuvent être déclarées manuellement, sans mesure ni vérification automatique.
-- Les sessions initiales sont fictives et identifiées « Démo ». Leur suppression nécessite une confirmation, tout comme celle d’une session.
+Les anciens tours sans secteurs restent pleinement utilisables. Si des secteurs sont saisis, les trois sont requis et **leur somme doit égaler exactement le chrono à 1 ms près de résolution** (aucun écart accepté). Une incohérence est refusée avant l’enregistrement, y compris à l’import.
 
-## Données locales
+Les meilleurs secteurs et le tour idéal utilisent exclusivement les tours valides avec trois secteurs cohérents. L’idéal est la somme des meilleurs S1, S2 et S3 observés, sans garantie qu’ils soient réalisables ensemble. L’écart « réel − idéal » peut être négatif lorsque le meilleur tour réel n’a pas de secteurs connus ; il est affiché comme tel, sans modifier les chronos.
 
-Les sessions sont stockées uniquement dans le LocalStorage du navigateur, sous `racelab.sessions.v1`. Les données persistent après rechargement ; les démos ne sont chargées qu’à la première ouverture, jamais après une suppression volontaire. Changer de navigateur, d’origine ou de port crée un autre espace de stockage. Effacer les données du navigateur efface l’historique ; aucun service distant n’en conserve une copie.
+## Méthodes de calcul et configurations
 
-Les données chargées sont validées. Un stockage corrompu est conservé sans écrasement automatique et une réinitialisation explicite est proposée. Si l’écriture est impossible, un avertissement indique que les modifications restent uniquement en mémoire.
+Les tours invalides restent dans les graphiques et les tableaux, mais sont exclus de tous les calculs de chronos et de secteurs. Sans tour valide, les statistiques affichent `—`, jamais `NaN`. Avec un seul tour, l’écart-type est zéro.
 
-Aucune télémétrie réelle n’est inventée : cette application analyse uniquement des chronos saisis manuellement. Les records par circuit peuvent regrouper plusieurs voitures et jeux ; leur contexte reste accessible dans chaque session.
+La progression est calculée entre les premières et dernières sessions contenant un tour valide, dans l’ordre des dates. Gain = premier meilleur − dernier meilleur ; gain relatif = gain / premier meilleur × 100. Positif indique une amélioration. Une session unique donne un écart zéro sans établir une tendance. Les sessions d’une même date sont départagées de façon stable par identifiant : l’heure des runs n’est pas connue.
 
-## Tests navigateur
+La comparaison et la progression exigent un même nom de circuit et une même configuration normalisés (casse, accents et espaces). Aucun rapprochement approximatif de variantes n’est réalisé. Une configuration vide constitue un groupe distinct : sa compatibilité réelle n’est pas vérifiée. Les anciennes sessions restent dans ce groupe tant que l’utilisateur ne précise pas leur configuration.
 
-```sh
-npx playwright install chromium
-npm run test:e2e
-```
+Les filtres voiture/jeu réduisent les biais ; les conditions, pneus, carburant et réglages ne sont pas mesurés. Les écarts sont descriptifs et ne prouvent pas à eux seuls une progression du pilote. À record égal, la session la plus ancienne est retenue, puis son identifiant.
 
-Les tests démarrent Vite automatiquement. Dans les environnements où le répertoire personnel n’est pas accessible, préfixer les deux commandes avec `PLAYWRIGHT_BROWSERS_PATH=/tmp/racelab-browsers`.
+L’évolution du rythme au sein d’une session compare deux blocs valides de taille `min(3, floor(nombre de tours valides / 2))`, sans chevauchement. Les numéros utilisés sont affichés ; le tour central d’un effectif impair peut être omis. Moins de deux tours valides : aucune évolution calculée.
 
-Dans cette instance cloud, Chromium est déjà installé : `CHROMIUM_PATH=/usr/bin/chromium npm run test:e2e`. Le téléchargement de Playwright peut être bloqué par la politique réseau ; cette commande utilise le navigateur système.
+## Sauvegardes JSON
 
-Le scénario de régression navigateur couvre la création d’une session, cinq chronos, l’invalidation du meilleur tour avec vérification de toutes les statistiques, l’édition et la suppression d’un chrono, l’édition de la session, la persistance après rechargement et la suppression définitive de la session.
-
-## Analyse des performances
-
-- **Consistency Analysis**, dans le détail d’une session : écart-type de population, amplitude, écart moyen au meilleur et pourcentage de tours valides. L’écart moyen est la moyenne valide moins le meilleur tour valide.
-- L’évolution du rythme compare les moyennes des premiers et derniers blocs de tours valides, de même taille et sans chevauchement : `min(3, floor(nombre de tours valides / 2))`. Le tour central d’un effectif impair peut être omis. Les numéros des tours utilisés sont affichés. La différence est « fin − début » ; aucune tendance n’est calculée avec moins de deux tours valides, et aucune cause n’est déduite.
-- Les infobulles des graphiques affichent le chrono exact, la validité et l’écart au meilleur valide de la session. Les invalides restent visibles et n’entrent dans aucune statistique de chrono. L’échelle en secondes suit les données, avec une marge minimale de 5 ms.
-- **Session Comparison**, accessible depuis la navigation ou la comparaison existante de l’historique : deux sessions distinctes du même circuit, deux courbes alignées par numéro de tour, contexte et écart des meilleurs chronos. Une session plus courte n’est pas prolongée ; les points manquants ne sont ni interpolés ni inventés.
-- Le champ facultatif **Conditions de piste** est conservé dans la même clé LocalStorage versionnée. Les anciennes sessions sans ce champ sont compatibles. Les différences de voiture, jeu, date, type ou conditions sont signalées ; les conditions absentes restent explicitement inconnues. Même des déclarations identiques ne prouvent pas l’équivalence des pneus, carburant, réglages ou météo.
-- **Personal Records**, dans la navigation et sur le dashboard : référence par circuit, voiture, jeu, date et lien vers la session. Les records sont recalculés depuis les tours valides à chaque ajout, édition, changement de validité ou suppression. Aucun record n’est conservé dans un cache séparé. À égalité, la session la plus ancienne est retenue, puis les identifiants départagent les sessions d’une même date.
-
-L’application analyse des chronos manuels, sans données de vitesse, freinage, trajectoire ou secteurs. L’import de télémétrie et la mesure automatique des conditions ne font pas partie de cette version.
-
-## Sauvegarder et restaurer
-
-Les boutons **Exporter JSON** et **Importer JSON** sont accessibles sur toutes les pages. Le traitement reste intégralement dans le navigateur.
-
-1. Exporter télécharge toutes les sessions et tous les tours, y compris les démos et les invalides, dans `racelab-v1-AAAA-MM-JJ.json`.
-2. Importer sélectionne un fichier JSON (10 Mo maximum), vérifie la version, la date d’exportation, les champs, les chronos entiers positifs, l’ordre des tours et l’unicité des identifiants de sessions et de tours dans chaque session.
-3. Un récapitulatif demande confirmation avant de **remplacer** toute la collection. Un fichier vide valide peut aussi vider l’historique après confirmation. Exportez votre collection actuelle avant de la remplacer.
-4. Annuler ou fournir un fichier invalide ne modifie aucune donnée. Si l’écriture LocalStorage échoue, l’import est refusé et la collection actuelle est préservée.
-5. Il n’y a pas de fusion : réimporter la même sauvegarde ne multiplie pas les sessions. Les identifiants dupliqués dans un fichier sont refusés, jamais corrigés silencieusement.
-
-Format :
+L’export inclut toutes les sessions et tous les tours (invalides, secteurs et démos compris) :
 
 ```json
 {
-  "formatVersion": 1,
-  "exportedAt": "2026-10-18T12:00:00.000Z",
+  "formatVersion": 2,
+  "exportedAt": "2026-10-20T18:00:00.000Z",
   "sessions": []
 }
 ```
 
-La version LocalStorage reste `racelab.sessions.v1` : aucune migration destructive. Les anciens champs facultatifs absents restent compatibles et les champs additionnels des sessions sont conservés. Une version de sauvegarde inconnue est refusée avant remplacement. Les fichiers exportés contiennent vos données en clair : conservez-les comme vos autres fichiers personnels.
+Les sauvegardes v1 et v2 sont acceptées. Une version inconnue, des identifiants dupliqués, des dates impossibles ou des chronos/secteurs invalides sont refusés. L’import est un **remplacement confirmé**, jamais une fusion implicite. Réimporter le même fichier ne multiplie pas les sessions. Limite : 10 Mo.
 
-## Vérifications et limites de la v1.0
+Un import refusé ou une panne de stockage pendant la restauration conserve la collection actuelle. Les données locales illisibles restent intactes jusqu’à un remplacement ou une réinitialisation explicitement confirmés. Les sauvegardes JSON contiennent vos informations en clair : conservez-les comme vos autres fichiers personnels.
+
+## Import CSV réellement pris en charge
+
+CSV **générique UTF-8 avec en-têtes**, séparé par virgule, point-virgule ou tabulation (détection automatique). BOM, guillemets doubles, guillemets échappés et sauts de ligne dans un champ entre guillemets sont pris en charge. Limites : **2 Mo et 10 000 lignes**. L’aperçu affiche jusqu’à 200 lignes, mais toutes sont validées.
+
+Exemple fictif disponible dans l’interface et dans [public/exemple-chronos.csv](public/exemple-chronos.csv) :
+
+```csv
+tour;chrono;valide;s1;s2;s3
+1;1:37.317;true;30.000;31.000;36.317
+2;98.000;true;30.500;31.100;36.400
+3;96.890;false;30.100;30.900;35.890
+```
+
+1. Créer ou choisir la session de destination, avec ses métadonnées réelles.
+2. Choisir le fichier, puis associer les colonnes au chrono et facultativement au numéro, à la validité et aux trois secteurs. Les noms courants sont suggérés ; les autres noms se sélectionnent manuellement.
+3. Prévisualiser les chronos, erreurs, validités et doublons potentiels.
+4. Corriger le fichier ou confirmer explicitement l’exclusion des lignes en erreur. Les doublons potentiels sont exclus par défaut et peuvent être réinclus explicitement.
+5. Confirmer le nombre de tours à ajouter. Aucun tour existant n’est remplacé. Les tours suivent l’ordre du fichier et sont renumérotés à la suite de la session.
+
+Chronos et secteurs utilisent un point décimal et trois chiffres : `97.317`, `1:37.317`, `32.439`. Les nombres bruts en millisecondes, les décimales avec virgule et les exports natifs de jeux ne sont **pas** convertis automatiquement. Les statuts reconnus sont `true/false`, `1/0`, `oui/non`, `yes/no`, `valid/invalid`, `valide/invalide` ; une cellule vide ou une colonne non associée signifie valide.
+
+Avec un numéro source, les réimports identiques sont reconnus même après renumérotation grâce à la provenance. Un numéro répété dans le fichier est une erreur. Sans numéro, même chrono, validité et secteurs indiquent un doublon **potentiel** : deux tours identiques peuvent être légitimes, d’où le choix explicite de les inclure. Aucune compatibilité avec tous les formats d’ACC, iRacing, PMR ou F1 n’est revendiquée.
+
+## Fiabilité entre onglets
+
+La v2 vérifie la version locale avant chaque écriture et réagit aux changements `storage` et au retour de focus. Les écritures sont sérialisées avec **Web Locks** lorsque l’API est disponible (navigateurs récents sous HTTPS, dont GitHub Pages). Sans cette API, les contrôles préalables et les avertissements restent actifs, mais il n’existe pas de transaction atomique entre onglets.
+
+En cas de conflit : la copie de cet onglet reste consultable et exportable, ses nouvelles modifications restent en mémoire et n’écrasent pas l’autre version. Exportez votre copie, puis choisissez explicitement de charger la version externe. Il n’y a pas de fusion automatique. Une ancienne v1 ouverte ne respecte pas les verrous v2 : fermer les anciens onglets pendant la mise à niveau reste recommandé.
+
+En cas de quota ou d’accès refusé, les ajouts/éditions restent en mémoire avec un avertissement ; exportez-les avant de fermer l’onglet. Les restaurations JSON et CSV exigent une sauvegarde réussie avant validation. L’effacement volontaire du stockage navigateur reste hors du contrôle de l’application.
+
+Les données sont propres au navigateur et à l’origine HTTPS. Une publication v2 sur **la même adresse** conserve la clé. Changer de navigateur ou de domaine ne transfère pas les sessions : exporter depuis l’ancienne origine puis importer dans la nouvelle.
+
+## Développement et vérifications
+
+Aucune installation n’est nécessaire pour utiliser le site hébergé. Pour développer uniquement : Node.js 24 LTS et npm.
 
 ```sh
+npm ci
+npm run dev
 npm run typecheck
 npm test
 npm run build
-CHROMIUM_PATH=/usr/bin/chromium npm run test:e2e
+npm run preview
 ```
 
-Aucun lint n’est configuré dans ce dépôt ; aucun résultat de lint n’est donc revendiqué. Les tests navigateur couvrent aussi téléchargement réel et restauration, annulation, import invalide, doublons, panne de stockage, identifiants de session particuliers, recherche sans résultat et navigation mobile sans erreur console. Les tests unitaires incluent des calculs sur 150 000 tours ; ce volume ne constitue pas une validation de performance de l’interface entière.
+Le chemin de base est **`/Number1/`** dans Vite. Ouvrir l’adresse incluant ce chemin indiquée par le serveur. Dans les environnements où le cache npm personnel est inaccessible : `npm ci --cache /tmp/racelab-npm`.
 
-Au-delà de 60 tours, le graphique propose une plage ajustable (40 tours affichés initialement). Les poignées se déplacent à la souris ou au clavier avec les flèches. Tous les tours restent enregistrés ; le tableau et les statistiques concernent la session complète.
+```sh
+npx playwright install chromium
+npm run test:e2e
+npm run test:production
+```
 
-Les capacités de stockage dépendent du navigateur. Les très grands historiques peuvent ralentir les tableaux, qui ne sont pas virtualisés. Utilisez de préférence un seul onglet d’édition : les modifications concurrentes entre onglets ne sont pas fusionnées. Il n’y a ni synchronisation distante, ni connexion à un jeu, ni télémétrie automatique. La météo, le carburant, les pneus et les réglages restent non mesurés. Aucun hébergement de production n’a été déployé par cette tâche.
+Dans l’environnement cloud disposant du navigateur système : préfixer les deux dernières commandes par `CHROMIUM_PATH=/usr/bin/chromium`. Les tests de développement utilisent une base `/` dédiée ; le test de production utilise bien **`/Number1/`**. Aucun lint n’est configuré ; aucun résultat de lint n’est revendiqué.
 
-## Déploiement Vercel gratuit, sans terminal
+Les tests couvrent les fonctions v1, les secteurs incohérents, les variantes incompatibles, le CSV, les sauvegardes JSON v1/v2, les conflits réels entre onglets, le refus d’écraser une version externe, les pannes de stockage, la persistance et les vues mobiles. Les vérifications de volume couvrent 2 500 sessions dans les calculs, 250 sessions dans l’historique paginé et 500 tours dans l’interface. Les tests v1 incluent 150 000 tours pour les calculs seuls, pas pour le rendu complet. Les tableaux de tours et les comparaisons ne sont pas virtualisés ; de très grands runs peuvent ralentir le navigateur.
 
-Le projet est une application statique Vite. Aucun backend, aucune variable secrète et aucune base de données ne sont nécessaires. Le fichier `vercel.json` définit `npm ci`, `npm run build`, le dossier `dist` et le repli des chemins vers `index.html`. Node.js 24.x est déclaré dans `package.json`. L’offre Hobby de Vercel convient à un usage personnel non commercial, dans ses limites d’utilisation.
+## Préparation GitHub Pages — publication sur accord uniquement
 
-### 1. Mettre le projet complet sur GitHub
+Le dépôt comporte le code source sur `main` et la version statique actuellement publiée sur `gh-pages`. **Ne pas pousser sur `gh-pages` sans accord** : cette branche déclenche la publication.
 
-Attention : les fichiers préparés dans l’espace de travail ne sont pas automatiquement présents dans le dépôt GitHub. Un dépôt contenant seulement le README ne permet pas de déployer RaceLab.
+La commande `npm run build` produit `dist/` avec les liens CSS/JS sous `/Number1/`. La navigation des pages reste interne à React : l’actualisation conserve les données, pas nécessairement la vue courante. Aucun compte ou serveur d’API n’est requis.
 
-1. Récupérer l’archive `RaceLab-Vercel.zip`, puis utiliser **Extraire tout** dans Windows (aucune installation nécessaire).
-2. Ouvrir `https://github.com/BoubiPrime/Number1` et choisir **Add file → Upload files**. Si le menu n’est pas disponible, vérifier que le compte connecté peut modifier le dépôt.
-3. Glisser **le contenu** du dossier extrait dans la page : `package.json`, `package-lock.json`, `vercel.json`, `index.html`, les configurations et les dossiers `src`, `public`, `e2e`. Ne pas envoyer le ZIP lui-même, `node_modules` ou `dist`.
-4. Vérifier que `package.json`, `vercel.json` et `src` sont bien à la racine du dépôt, puis choisir **Commit changes** lorsque vous décidez d’enregistrer les fichiers sur GitHub.
+Après autorisation de publication :
 
-Si un projet Vercel est déjà relié à ce dépôt, un commit peut déclencher un déploiement automatique. Ne valider les changements qu’au moment où cette publication est souhaitée.
+1. Enregistrer et faire revoir les changements de source v2.
+2. Exécuter les contrôles, les tests et le build.
+3. Mettre le contenu de `dist/` à la racine de la branche `gh-pages`, conserver `.nojekyll` et copier `index.html` vers `404.html` pour le repli statique. Préserver l’historique de la branche ; ne pas forcer son remplacement.
+4. Pousser cette branche seulement après accord, puis vérifier le succès du déploiement Pages et l’application sur `https://boubiprime.github.io/Number1/` (ressources, actualisation, LocalStorage, CSV et secteurs).
+5. Exporter une sauvegarde avant la première utilisation de la v2 et fermer les anciens onglets v1. Le format JSON 2 n’est pas destiné à être réimporté dans la v1.
 
-### 2. Créer le site depuis Vercel
-
-1. Aller sur `https://vercel.com`, se connecter avec GitHub et choisir l’offre personnelle **Hobby**.
-2. Choisir **Add New → Project**, autoriser uniquement le dépôt nécessaire et importer `BoubiPrime/Number1`.
-3. Vérifier **Framework Preset : Vite** et **Root Directory : ./** (racine du dépôt).
-4. Vérifier les réglages hérités du projet : **Install Command : npm ci**, **Build Command : npm run build**, **Output Directory : dist**, **Node.js : 24.x**. Aucune variable d’environnement n’est requise.
-5. Le bouton **Deploy** publie le site : cliquer uniquement lorsque vous confirmez la publication. Vercel fournit ensuite une adresse HTTPS en `.vercel.app`.
-6. Tester la création d’une session, actualiser et vérifier sa présence. Tester aussi le téléchargement et la restauration d’une sauvegarde JSON.
-
-Les libellés de l’interface Vercel peuvent varier. Un dépôt privé est compatible ; le site déployé peut néanmoins être accessible publiquement. Garder le dépôt privé ne rend pas automatiquement le site privé. Après connexion de GitHub, les nouveaux commits peuvent provoquer des redéploiements.
-
-### Navigation et données
-
-La navigation actuelle (dashboard, historique, détail, comparaison et records) est interne à React, sur l’URL `/`. Le repli SPA évite une erreur serveur en ouvrant un autre chemin ; il ne crée pas de liens directs persistants vers une session et n’enregistre pas la vue courante après actualisation.
-
-Les sessions restent dans le LocalStorage **du navigateur de chaque visiteur**, sous `racelab.sessions.v1`. Vercel n’en reçoit ni ne synchronise les valeurs. Une mise à jour du site sur la même origine ne les efface pas. Elles ne sont pas partagées entre appareils, navigateurs, adresses de prévisualisation ou domaines personnalisés. Exporter les données depuis l’ancienne adresse, puis importer le JSON depuis la nouvelle adresse pour les transférer. La navigation privée ou l’effacement des données du navigateur peut supprimer les sessions.
-
-La compilation et les tests locaux ne constituent pas une validation d’un déploiement Vercel réel. Aucun site n’a été publié par l’assistant et aucune intégration de déploiement Vercel n’est disponible dans cette conversation.
-
-Pour répéter les vérifications de la compilation servie localement : `npm run build`, puis `CHROMIUM_PATH=/usr/bin/chromium npm run test:production` dans cette instance cloud. Le test contrôle les fichiers statiques, le repli SPA de Vite Preview, la navigation, les sessions, les tours, le LocalStorage et l’import/export. Le comportement du réseau Vercel reste à vérifier après publication.
+Le build local ne constitue pas une vérification d’un nouveau déploiement public. Aucun déploiement v2 n’est effectué par cette préparation. La configuration Vercel historique reste disponible avec une surcharge de base `/` pour son build à la racine, mais n’est pas nécessaire à GitHub Pages.

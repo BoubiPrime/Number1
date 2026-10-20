@@ -72,6 +72,7 @@ test('gestion complète : cinq tours, recalcul, édition, suppression et persist
   await page.getByLabel('Date',{exact:true}).fill('2026-10-18');
   await page.getByLabel('Type de session',{exact:true}).selectOption('Essais');
   await page.getByRole('button',{name:'Créer la session',exact:true}).click();
+  await expect(page.getByRole('heading',{level:1})).toHaveText('Silverstone');
   const originalId = await page.evaluate(()=>JSON.parse(localStorage.getItem('racelab.sessions.v1')!)[0].id);
   expect(originalId).toBeTruthy();
   for(const time of ['1:40.000','102.000','1:38.000','104.000','1:46.000']) {

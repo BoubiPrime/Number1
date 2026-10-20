@@ -13,7 +13,7 @@ describe("sauvegardes JSON v1", () => {
     sessions[0].conditions = "Sec";
     const backup = createBackup(sessions, new Date("2026-10-18T12:30:00.000Z"));
     expect(backup).toMatchObject({
-      formatVersion: 1,
+      formatVersion: 2,
       exportedAt: "2026-10-18T12:30:00.000Z",
     });
     expect(parseBackup(JSON.stringify(backup)).sessions).toEqual(sessions);
@@ -24,7 +24,7 @@ describe("sauvegardes JSON v1", () => {
     "null",
     "[]",
     "{}",
-    '{"formatVersion":2}',
+    '{"formatVersion":99}',
     '{"sessions":[]}',
   ])("refuse un fichier invalide sans modifier les données : %s", (text) =>
     expect(() => parseBackup(text)).toThrow(),

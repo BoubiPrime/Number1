@@ -3,6 +3,8 @@ export interface Lap {
   number: number;
   timeMs: number;
   valid: boolean;
+  sectors?: [number, number, number];
+  csvSource?: string;
 }
 export interface Session {
   id: string;
@@ -13,6 +15,7 @@ export interface Session {
   type: "Essais" | "Qualifications" | "Course";
   laps: Lap[];
   conditions?: string;
+  layout?: string;
   demo?: boolean;
 }
 export const KEY = "racelab.sessions.v1";
@@ -88,6 +91,7 @@ export function isSessions(value: unknown): value is Session[] {
       typeof s.date !== "string" ||
       !isDate(s.date) ||
       (s.conditions !== undefined && typeof s.conditions !== "string") ||
+      (s.layout !== undefined && typeof s.layout !== "string") ||
       (s.demo !== undefined && typeof s.demo !== "boolean") ||
       !Array.isArray(s.laps)
     )
@@ -102,7 +106,9 @@ export function isSessions(value: unknown): value is Session[] {
         l.number !== index + 1 ||
         !Number.isSafeInteger(l.timeMs) ||
         l.timeMs <= 0 ||
-        typeof l.valid !== "boolean"
+        typeof l.valid !== "boolean" ||
+        (l.sectors !== undefined && !validSectors(l.sectors, l.timeMs)) ||
+        (l.csvSource !== undefined && typeof l.csvSource !== "string")
       )
         return false;
       lapIds.add(l.id);
@@ -190,15 +196,19 @@ export function personalRecords(sessions: Session[]) {
     (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id),
   );
   for (const session of ordered) {
-    const key = circuitKey(session.circuit);
+    const key = configurationKey(session);
     if (!groups.has(key))
-      groups.set(key, { circuit: session.circuit, session: null, lap: null });
+      groups.set(key, {
+        circuit: circuitLabel(session),
+        session: null,
+        lap: null,
+      });
     const record = groups.get(key)!;
     for (const lap of session.laps)
       if (lap.valid && (!record.lap || lap.timeMs < record.lap.timeMs)) {
         record.session = session;
         record.lap = lap;
-        record.circuit = session.circuit;
+        record.circuit = circuitLabel(session);
       }
   }
   return [...groups.values()].sort((a, b) =>
@@ -206,8 +216,7 @@ export function personalRecords(sessions: Session[]) {
   );
 }
 export function comparisonData(a: Session, b: Session) {
-  if (a.id === b.id || circuitKey(a.circuit) !== circuitKey(b.circuit))
-    return [];
+  if (a.id === b.id || !compatibleSessions(a, b)) return [];
   return Array.from(
     { length: Math.max(a.laps.length, b.laps.length) },
     (_, i) => ({
@@ -225,4 +234,80 @@ export function chartDomain(values: number[]): [number, number] {
     max = values.reduce((a, b) => Math.max(a, b), -Infinity);
   const padding = Math.max((max - min) * 0.12, 0.005);
   return [Math.max(0, min - padding), max + padding];
+}
+
+export const configurationKey = (s: Pick<Session, "circuit" | "layout">) =>
+  JSON.stringify([circuitKey(s.circuit), circuitKey(s.layout ?? "")]);
+export const circuitLabel = (s: Pick<Session, "circuit" | "layout">) =>
+  `${s.circuit}${s.layout?.trim() ? ` · ${s.layout.trim()}` : ""}`;
+export const compatibleSessions = (a: Session, b: Session) =>
+  configurationKey(a) === configurationKey(b);
+// Les secteurs sont saisis avec une résolution de 1 ms : leur somme doit être exacte.
+export function validSectors(
+  value: unknown,
+  total: number,
+): value is [number, number, number] {
+  return (
+    Array.isArray(value) &&
+    value.length === 3 &&
+    value.every((v) => Number.isSafeInteger(v) && v > 0) &&
+    value.reduce((a, b) => a + b, 0) === total
+  );
+}
+export function parseSectors(
+  values: string[],
+  total: number,
+): [number, number, number] | undefined {
+  if (values.every((v) => !v.trim())) return undefined;
+  if (values.length !== 3 || values.some((v) => !v.trim()))
+    throw new Error("Renseignez les trois secteurs ou laissez-les tous vides.");
+  const parsed = values.map(parseTime);
+  if (parsed.some((v) => v === null))
+    throw new Error(
+      "Secteurs : format attendu 32.439 ou 0:32.439, avec trois décimales.",
+    );
+  if (!validSectors(parsed, total))
+    throw new Error(
+      `La somme des secteurs (${formatTime((parsed as number[]).reduce((a, b) => a + b, 0))}) doit correspondre exactement au chrono (${formatTime(total)}).`,
+    );
+  return parsed;
+}
+export function sectorStats(laps: Lap[]) {
+  const complete = laps.filter(
+    (l) => l.valid && l.sectors && validSectors(l.sectors, l.timeMs),
+  );
+  const best: (number | null)[] = [0, 1, 2].map((i) =>
+    complete.length
+      ? complete.reduce((min, l) => Math.min(min, l.sectors![i]), Infinity)
+      : null,
+  );
+  const ideal = best.every((v) => v !== null)
+    ? (best as number[]).reduce((sum, v) => sum + v, 0)
+    : null;
+  const real = stats(laps).best;
+  return {
+    best,
+    ideal,
+    completeCount: complete.length,
+    real,
+    gap: ideal !== null && real !== null ? real - ideal : null,
+  };
+}
+export function driverProgress(sessions: Session[]) {
+  if (sessions.some((s) => !compatibleSessions(s, sessions[0])))
+    throw Error("La progression nécessite une même configuration de circuit.");
+  const rows = [...sessions]
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
+    .map((session) => ({ session, ...stats(session.laps) }));
+  const valid = rows.filter((r) => r.best !== null);
+  const first = valid[0]?.best ?? null,
+    last = valid.at(-1)?.best ?? null;
+  return {
+    rows,
+    first,
+    last,
+    improvement: first !== null && last !== null ? first - last : null,
+    percent:
+      first !== null && last !== null ? ((first - last) / first) * 100 : null,
+  };
 }

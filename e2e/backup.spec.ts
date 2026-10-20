@@ -28,6 +28,9 @@ async function upload(page: Page, data: unknown) {
   });
 }
 async function stored(page: Page) {
+  await expect
+    .poll(() => page.evaluate((k) => localStorage.getItem(k), key))
+    .not.toBeNull();
   return page.evaluate((k) => localStorage.getItem(k), key);
 }
 test("export réel, restauration confirmée, annulation et absence de doublons", async ({
@@ -38,9 +41,9 @@ test("export réel, restauration confirmée, annulation et absence de doublons",
   const downloaded = page.waitForEvent("download");
   await page.getByRole("button", { name: "Exporter JSON" }).click();
   const download = await downloaded;
-  expect(download.suggestedFilename()).toMatch(/^racelab-v1-.*\.json$/);
+  expect(download.suggestedFilename()).toMatch(/^racelab-v2-.*\.json$/);
   const exported = JSON.parse(await readFile((await download.path())!, "utf8"));
-  expect(exported.formatVersion).toBe(1);
+  expect(exported.formatVersion).toBe(2);
   expect(Number.isFinite(Date.parse(exported.exportedAt))).toBe(true);
   expect(exported.sessions).toEqual(JSON.parse(original!));
   await upload(page, backup());
@@ -50,6 +53,7 @@ test("export réel, restauration confirmée, annulation et absence de doublons",
   expect(await stored(page)).toBe(original);
   await upload(page, backup());
   await page.getByRole("button", { name: "Remplacer les données" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(JSON.parse((await stored(page))!)).toEqual(sessions);
   await page.reload();
   await expect(
@@ -57,6 +61,7 @@ test("export réel, restauration confirmée, annulation et absence de doublons",
   ).toBeVisible();
   await upload(page, backup());
   await page.getByRole("button", { name: "Remplacer les données" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(JSON.parse((await stored(page))!)).toHaveLength(1);
   // Le nom d’un identifiant de session ne doit jamais déclencher une réinitialisation globale.
   const both = [
@@ -65,6 +70,7 @@ test("export réel, restauration confirmée, annulation et absence de doublons",
   ];
   await upload(page, backup(both));
   await page.getByRole("button", { name: "Remplacer les données" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("button", { name: "Le Mans LMU", exact: true }).click();
   await page
     .getByRole("button", { name: "Supprimer cette session", exact: true })
@@ -78,6 +84,7 @@ test("export réel, restauration confirmée, annulation et absence de doublons",
   ).toEqual(["other"]);
   await upload(page, exported);
   await page.getByRole("button", { name: "Remplacer les données" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(JSON.parse((await stored(page))!)).toEqual(exported.sessions);
 });
 test("JSON invalide, version future, doublons et chronos négatifs refusés sans perte", async ({
@@ -87,7 +94,7 @@ test("JSON invalide, version future, doublons et chronos négatifs refusés sans
   const before = await stored(page);
   for (const file of [
     "{broken",
-    { ...backup(), formatVersion: 2 },
+    { ...backup(), formatVersion: 99 },
     backup([sessions[0], sessions[0]]),
     backup([
       { ...sessions[0], laps: [{ ...sessions[0].laps[0], timeMs: -1 }] },
@@ -125,6 +132,7 @@ test("import vide confirmé, puis restauration d’un stockage corrompu", async 
   await page.goto("/");
   await upload(page, backup([]));
   await page.getByRole("button", { name: "Remplacer les données" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(await stored(page)).toBe("[]");
   await expect(
     page.getByText("Votre histoire commence en piste.").first(),
@@ -134,6 +142,7 @@ test("import vide confirmé, puis restauration d’un stockage corrompu", async 
   await expect(page.getByRole("alert")).toContainText("illisibles");
   await upload(page, backup());
   await page.getByRole("button", { name: "Remplacer les données" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByRole("alert")).toHaveCount(0);
   await page.reload();
   expect(JSON.parse((await stored(page))!)).toEqual(sessions);
@@ -183,6 +192,7 @@ test("audit navigation mobile, recherche vide et longue session sans erreur cons
   };
   await upload(page, backup([longSession]));
   await page.getByRole("button", { name: "Remplacer les données" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("button", { name: "Le Mans LMU", exact: true }).click();
   await expect(page.locator(".recharts-brush")).toBeVisible();
   await expect(page.locator(".laps-panel tbody tr")).toHaveCount(500);
@@ -211,7 +221,7 @@ test("audit navigation mobile, recherche vide et longue session sans erreur cons
   ).toBe(true);
   await page.locator(".chart").first().scrollIntoViewIfNeeded();
   await page.screenshot({
-    path: "/tmp/racelab-v1-mobile.png",
+    path: "/tmp/racelab-v2-mobile.png",
     fullPage: false,
   });
   expect(errors).toEqual([]);

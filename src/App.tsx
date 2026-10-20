@@ -3,6 +3,7 @@ import {
   Suspense,
   useEffect,
   useRef,
+  useMemo,
   useState,
   type FormEvent,
   type ChangeEvent,
@@ -28,18 +29,19 @@ import {
   Search,
   ShieldCheck,
   Timer,
+  TrendingUp,
   Trash2,
   Trophy,
   X,
 } from "lucide-react";
 import {
-  KEY,
   circuitKey,
+  circuitLabel,
+  compatibleSessions,
+  parseSectors,
   delta,
-  demoSessions,
   formatTime,
   isDate,
-  isSessions,
   parseTime,
   personalRecords,
   stats,
@@ -47,6 +49,11 @@ import {
   type Session,
 } from "./model";
 
+import { useSessionStore } from "./useSessionStore";
+import { SectorInputs, SectorAnalysis } from "./Sectors";
+import { DriverProgress } from "./DriverProgress";
+import { DashboardProgress } from "./DashboardProgress";
+import { CsvImport } from "./CsvImport";
 import {
   ConsistencyAnalysis,
   PersonalRecords,
@@ -64,28 +71,19 @@ type DeleteTarget =
   | { kind: "session"; id: string }
   | { kind: "demo" }
   | { kind: "reset" };
-type View = "dashboard" | "history" | "session" | "comparison" | "records";
+type View =
+  | "dashboard"
+  | "history"
+  | "session"
+  | "comparison"
+  | "records"
+  | "progress";
 const dateLabel = (value: string) =>
   new Date(`${value}T12:00:00`).toLocaleDateString("fr-FR", {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
-function load() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw === null) return { sessions: demoSessions(), error: "" };
-    const data: unknown = JSON.parse(raw);
-    if (!isSessions(data)) throw Error();
-    return { sessions: data, error: "" };
-  } catch {
-    return {
-      sessions: [] as Session[],
-      error:
-        "Les données locales sont illisibles. Elles ont été conservées. Réinitialisez le stockage pour reprendre la sauvegarde.",
-    };
-  }
-}
 function Metric({
   label,
   value,
@@ -178,19 +176,29 @@ function Modal({
 }
 const LapChart = lazy(() => import("./LapChart"));
 export default function App() {
-  const [initial] = useState(load);
-  const [sessions, setSessions] = useState<Session[]>(initial.sessions);
-  const [storageError, setStorageError] = useState(initial.error);
+  const {
+    sessions,
+    setSessions,
+    replaceSessions,
+    storageError,
+    storageBlocked,
+    conflict,
+    reloadRemote,
+  } = useSessionStore();
+  const [showCsv, setShowCsv] = useState(false);
+  const [reloadConfirm, setReloadConfirm] = useState(false);
+  const [sectors, setSectors] = useState(["", "", ""]);
   const [view, setView] = useState<View>("dashboard");
   const [selected, setSelected] = useState<string | null>(null);
   const [recordCircuit, setRecordCircuit] = useState("");
   const [create, setCreate] = useState(false);
   const [editingSession, setEditingSession] = useState<string | null>(null);
   const [editingLap, setEditingLap] = useState<string | null>(null);
-  const [storageBlocked, setStorageBlocked] = useState(Boolean(initial.error));
   const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
   const [query, setQuery] = useState("");
   const [game, setGame] = useState("");
+  const [historyPage, setHistoryPage] = useState(0);
+  useEffect(() => setHistoryPage(0), [query, game, sessions.length]);
   const [comparison, setComparison] = useState<string[]>([]);
   const [showCompare, setShowCompare] = useState(false);
   const [notice, setNotice] = useState("");
@@ -212,7 +220,7 @@ export default function App() {
       );
       const link = document.createElement("a");
       link.href = url;
-      link.download = `racelab-v1-${backup.exportedAt.slice(0, 10)}.json`;
+      link.download = `racelab-v2-${backup.exportedAt.slice(0, 10)}.json`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -244,14 +252,11 @@ export default function App() {
       setReadingImport(false);
     }
   };
-  const confirmImport = () => {
+  const confirmImport = async () => {
     if (!pendingImport) return;
     try {
       // Écrire avant de remplacer l’état : un échec de stockage préserve la collection actuelle.
-      localStorage.setItem(KEY, JSON.stringify(pendingImport.sessions));
-      setSessions(pendingImport.sessions);
-      setStorageBlocked(false);
-      setStorageError("");
+      if (!(await replaceSessions(pendingImport.sessions))) throw Error();
       setBackupError("");
       setSelected(null);
       setComparison([]);
@@ -269,22 +274,14 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (storageBlocked) return;
-    try {
-      localStorage.setItem(KEY, JSON.stringify(sessions));
-      setStorageError("");
-    } catch {
-      setStorageError(
-        "La sauvegarde locale est indisponible ou pleine. Vos modifications restent dans cet onglet.",
-      );
-    }
-  }, [sessions, storageBlocked]);
-  useEffect(() => {
     if (!notice) return;
     const id = setTimeout(() => setNotice(""), 4000);
     return () => clearTimeout(id);
   }, [notice]);
-  const sorted = [...sessions].sort((a, b) => b.date.localeCompare(a.date));
+  const sorted = useMemo(
+    () => [...sessions].sort((a, b) => b.date.localeCompare(a.date)),
+    [sessions],
+  );
   const current = sessions.find((s) => s.id === selected);
   const latest = sorted[0];
   const filteredSessions = sorted.filter(
@@ -294,10 +291,14 @@ export default function App() {
   );
   const active = view === "session" ? current : latest;
   const summary = active ? stats(active.laps) : stats([]);
-  const groups = personalRecords(sessions).map((record) => ({
-    circuit: record.circuit,
-    best: record.lap?.timeMs ?? null,
-  }));
+  const groups = useMemo(
+    () =>
+      personalRecords(sessions).map((record) => ({
+        circuit: record.circuit,
+        best: record.lap?.timeMs ?? null,
+      })),
+    [sessions],
+  );
   const record =
     groups.find((g) => circuitKey(g.circuit) === recordCircuit) ?? groups[0];
   const open = (s: Session) => {
@@ -307,12 +308,20 @@ export default function App() {
     setValid(true);
     setLapError("");
     setEditingLap(null);
+    setSectors(["", "", ""]);
   };
   const addLap = (event: FormEvent) => {
     event.preventDefault();
     const ms = parseTime(time);
     if (!ms || !current) {
       setLapError("Format attendu : 1:37.317 ou 97.317 (trois décimales).");
+      return;
+    }
+    let parsedSectors: Lap["sectors"];
+    try {
+      parsedSectors = parseSectors(sectors, ms);
+    } catch (error) {
+      setLapError((error as Error).message);
       return;
     }
     setSessions((prev) =>
@@ -327,6 +336,7 @@ export default function App() {
                   number: s.laps.length + 1,
                   timeMs: ms,
                   valid,
+                  ...(parsedSectors ? { sectors: parsedSectors } : {}),
                 },
               ],
             }
@@ -335,6 +345,7 @@ export default function App() {
     );
     setTime("");
     setLapError("");
+    setSectors(["", "", ""]);
     setNotice("Tour enregistré");
   };
   const toggleCompare = (s: Session) => {
@@ -343,7 +354,7 @@ export default function App() {
       return;
     }
     const first = sessions.find((x) => x.id === comparison[0]);
-    if (first && circuitKey(first.circuit) !== circuitKey(s.circuit)) {
+    if (first && !compatibleSessions(first, s)) {
       setNotice("Sélectionnez deux sessions sur le même circuit.");
       return;
     }
@@ -391,7 +402,7 @@ export default function App() {
                     <Flag size={17} />
                   </span>
                   <span>
-                    <strong>{s.circuit}</strong>
+                    <strong>{circuitLabel(s)}</strong>
                     <small>
                       {s.game}
                       {s.demo && <span className="demo-tag">DÉMO</span>}
@@ -445,7 +456,7 @@ export default function App() {
             <Activity size={26} />
           </span>
           RACE<span>LAB</span>
-          <small>PERFORMANCE ENGINEERING</small>
+          <small>PRO EDITION · V2.0</small>
         </a>
         <div className="nav-label">WORKSPACE</div>
         <nav>
@@ -472,6 +483,14 @@ export default function App() {
           >
             <GitCompareArrows size={19} />
             Comparaison
+          </button>
+          <button
+            aria-label="Driver Progress"
+            className={view === "progress" ? "active" : ""}
+            onClick={() => setView("progress")}
+          >
+            <TrendingUp size={19} />
+            Progression
           </button>
           <button
             aria-label="Personal Records"
@@ -507,27 +526,44 @@ export default function App() {
           <div className="breadcrumb">
             Workspace <ChevronRight size={13} />
             <span>
-              {view === "comparison"
-                ? "Session Comparison"
-                : view === "records"
-                  ? "Personal Records"
-                  : view === "history"
-                    ? "Historique"
-                    : view === "session"
-                      ? "Analyse de session"
-                      : "Vue d’ensemble"}
+              {view === "progress"
+                ? "Driver Progress"
+                : view === "comparison"
+                  ? "Session Comparison"
+                  : view === "records"
+                    ? "Personal Records"
+                    : view === "history"
+                      ? "Historique"
+                      : view === "session"
+                        ? "Analyse de session"
+                        : "Vue d’ensemble"}
             </span>
           </div>
           <div className="topbar-right">
             <span
-              className={`status-dot ${storageError ? "storage-failed" : ""}`}
+              className={`status-dot ${storageError || conflict ? "storage-failed" : ""}`}
             />{" "}
-            {storageError ? "SAUVEGARDE INDISPONIBLE" : "STOCKAGE LOCAL"}{" "}
+            {conflict
+              ? "CONFLIT ENTRE ONGLETS"
+              : storageError
+                ? "SAUVEGARDE INDISPONIBLE"
+                : "STOCKAGE LOCAL"}{" "}
             <span className="top-divider" />
             <span className="avatar small">RL</span>
           </div>
         </header>
         <main id="main-content" tabIndex={-1}>
+          {conflict && (
+            <div className="alert conflict-alert" role="alert">
+              <strong>Modifications concurrentes détectées.</strong> Une autre
+              version existe dans un autre onglet. Votre copie et vos
+              modifications restent ici, sans écraser l’autre version. Exportez
+              votre JSON avant de changer de version.
+              <button onClick={() => setReloadConfirm(true)}>
+                Charger la version de l’autre onglet
+              </button>
+            </div>
+          )}
           {storageError && (
             <div className="alert" role="alert">
               {storageError}
@@ -542,26 +578,30 @@ export default function App() {
             <div>
               <div className="eyebrow">VOTRE PROCHAIN TOUR COMMENCE ICI</div>
               <h1>
-                {view === "comparison"
-                  ? "Session Comparison"
-                  : view === "records"
-                    ? "Personal Records"
-                    : view === "history"
-                      ? "Historique des sessions"
-                      : view === "session" && current
-                        ? current.circuit
-                        : "Chaque millième compte."}
+                {view === "progress"
+                  ? "Driver Progress"
+                  : view === "comparison"
+                    ? "Session Comparison"
+                    : view === "records"
+                      ? "Personal Records"
+                      : view === "history"
+                        ? "Historique des sessions"
+                        : view === "session" && current
+                          ? current.circuit
+                          : "Chaque millième compte."}
               </h1>
               <p>
-                {view === "comparison"
-                  ? "Deux sessions, une même piste. Comparez vos chronos dans leur contexte."
-                  : view === "records"
-                    ? "Vos références par circuit, toujours reliées à leur session."
-                    : view === "history"
-                      ? "Retrouvez vos runs. Mesurez votre progression."
-                      : view === "session" && current
-                        ? `${current.car} · ${current.game}`
-                        : "Analysez vos sessions, affinez votre rythme, repoussez vos limites."}
+                {view === "progress"
+                  ? "Analysez votre évolution sur des configurations compatibles."
+                  : view === "comparison"
+                    ? "Deux sessions, une même piste. Comparez vos chronos dans leur contexte."
+                    : view === "records"
+                      ? "Vos références par circuit, toujours reliées à leur session."
+                      : view === "history"
+                        ? "Retrouvez vos runs. Mesurez votre progression."
+                        : view === "session" && current
+                          ? `${current.car} · ${current.game}`
+                          : "Analysez vos sessions, affinez votre rythme, repoussez vos limites."}
               </p>
             </div>
             <button className="primary" onClick={() => setCreate(true)}>
@@ -575,6 +615,10 @@ export default function App() {
               Données sur cet appareil
             </span>
             <div>
+              <button className="secondary" onClick={() => setShowCsv(true)}>
+                <Upload size={15} />
+                Importer CSV
+              </button>
               <button className="secondary" onClick={exportData}>
                 <Download size={15} />
                 Exporter JSON
@@ -602,7 +646,9 @@ export default function App() {
               {backupError}
             </div>
           )}
-          {view === "comparison" ? (
+          {view === "progress" ? (
+            <DriverProgress sessions={sessions} open={open} />
+          ) : view === "comparison" ? (
             <SessionComparison
               sessions={sessions}
               selected={comparison}
@@ -648,7 +694,38 @@ export default function App() {
                   <span className="muted">Comparaison sur un même circuit</span>
                 </div>
                 {filteredSessions.length ? (
-                  table(filteredSessions, true)
+                  <>
+                    {table(
+                      filteredSessions.slice(
+                        historyPage * 50,
+                        (historyPage + 1) * 50,
+                      ),
+                      true,
+                    )}
+                    <div className="pagination">
+                      <span>
+                        {filteredSessions.length} sessions · page{" "}
+                        {historyPage + 1}/
+                        {Math.max(1, Math.ceil(filteredSessions.length / 50))}
+                      </span>
+                      <button
+                        className="secondary"
+                        disabled={historyPage === 0}
+                        onClick={() => setHistoryPage((p) => p - 1)}
+                      >
+                        Précédente
+                      </button>
+                      <button
+                        className="secondary"
+                        disabled={
+                          (historyPage + 1) * 50 >= filteredSessions.length
+                        }
+                        onClick={() => setHistoryPage((p) => p + 1)}
+                      >
+                        Suivante
+                      </button>
+                    </div>
+                  </>
                 ) : sessions.length ? (
                   <div className="empty">
                     <Search size={28} />
@@ -930,7 +1007,10 @@ export default function App() {
                     </section>
                   </div>
                   {view === "session" && current && (
-                    <ConsistencyAnalysis session={current} />
+                    <>
+                      <ConsistencyAnalysis session={current} />
+                      <SectorAnalysis session={current} />
+                    </>
                   )}
                   {view === "session" && current && (
                     <section className="panel laps-panel">
@@ -953,6 +1033,7 @@ export default function App() {
                             aria-describedby="lap-error"
                           />
                         </label>
+                        <SectorInputs values={sectors} onChange={setSectors} />
                         <label className="checkbox-label">
                           <input
                             type="checkbox"
@@ -1124,6 +1205,12 @@ export default function App() {
             </>
           )}
           {view === "dashboard" && (
+            <DashboardProgress
+              sessions={sessions}
+              show={() => setView("progress")}
+            />
+          )}
+          {view === "dashboard" && (
             <PersonalRecords sessions={sessions} open={open} />
           )}
           {sessions.some((s) => s.demo) && (
@@ -1140,13 +1227,81 @@ export default function App() {
           )}
           <footer>
             <span>
-              <span className="footer-mark">/ /</span> RACELAB v1.0{" "}
+              <span className="footer-mark">/ /</span> RACELAB v2.0 PRO{" "}
               <span className="muted">MOTORSPORT ANALYTICS</span>
             </span>
             <span>Conçu pour la performance. Stocké sur votre appareil.</span>
           </footer>
         </main>
       </div>
+      {showCsv && (
+        <Modal title="Importer des chronos CSV" close={() => setShowCsv(false)}>
+          <CsvImport
+            sessions={sessions}
+            initialSession={
+              view === "session" ? (selected ?? undefined) : undefined
+            }
+            save={async (id, laps, expected) => {
+              const current = sessions.find((s) => s.id === id);
+              if (
+                !current ||
+                JSON.stringify(current.laps) !== JSON.stringify(expected)
+              )
+                return false;
+              const success = await replaceSessions(
+                sessions.map((s) =>
+                  s.id === id ? { ...s, laps: [...s.laps, ...laps] } : s,
+                ),
+                sessions,
+              );
+              if (success) {
+                setShowCsv(false);
+                setSelected(id);
+                setView("session");
+                setNotice(`${laps.length} tours CSV importés`);
+              }
+              return success;
+            }}
+          />
+        </Modal>
+      )}
+      {reloadConfirm && (
+        <Modal
+          title="Charger l’autre version ?"
+          close={() => setReloadConfirm(false)}
+        >
+          <p className="modal-copy">
+            Cette opération remplacera la copie de cet onglet. Exportez d’abord
+            votre JSON pour conserver les modifications non enregistrées. Aucun
+            remplacement automatique n’a eu lieu.
+          </p>
+          <div className="modal-actions">
+            <button className="secondary" onClick={exportData}>
+              Exporter ma copie JSON
+            </button>
+            <button
+              className="secondary"
+              onClick={() => setReloadConfirm(false)}
+            >
+              Annuler
+            </button>
+            <button
+              className="primary"
+              onClick={async () => {
+                if (await reloadRemote()) {
+                  setView("dashboard");
+                  setSelected(null);
+                  setComparison([]);
+                  setPendingImport(null);
+                  setReloadConfirm(false);
+                }
+              }}
+            >
+              Charger la version externe
+            </button>
+          </div>
+        </Modal>
+      )}
       {create && (
         <SessionForm
           close={() => setCreate(false)}
@@ -1256,17 +1411,14 @@ export default function App() {
             </button>
             <button
               className="danger-button"
-              onClick={() => {
+              onClick={async () => {
                 if (deleting.kind === "reset") {
                   try {
-                    localStorage.setItem(KEY, "[]");
-                    setStorageError("");
-                    setStorageBlocked(false);
-                    setSessions([]);
+                    if (!(await replaceSessions([]))) throw Error();
                     setNotice("Stockage réinitialisé");
                   } catch {
-                    setStorageError(
-                      "Impossible d’accéder au stockage de cet appareil.",
+                    setNotice(
+                      "Réinitialisation refusée : vérifiez l’avertissement de stockage.",
                     );
                   }
                 } else {
@@ -1377,6 +1529,7 @@ function SessionForm({
       game,
       date,
       conditions: String(data.get("conditions") ?? "").trim(),
+      layout: String(data.get("layout") ?? "").trim(),
       type: String(data.get("type")) as Session["type"],
       laps: session?.laps ?? [],
     });
@@ -1403,6 +1556,15 @@ function SessionForm({
             maxLength={100}
             placeholder="Ex. Spa-Francorchamps"
             autoFocus
+          />
+        </label>
+        <label>
+          Configuration du circuit (facultatif)
+          <input
+            name="layout"
+            defaultValue={session?.layout ?? ""}
+            maxLength={100}
+            placeholder="Ex. GP, National, tracé 2024"
           />
         </label>
         <label>
@@ -1498,6 +1660,9 @@ function LapEditor({
 }) {
   const [time, setTime] = useState(formatTime(lap.timeMs));
   const [valid, setValid] = useState(lap.valid);
+  const [sectors, setSectors] = useState(
+    lap.sectors?.map((v) => formatTime(v)) ?? ["", "", ""],
+  );
   const [error, setError] = useState("");
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -1506,7 +1671,12 @@ function LapEditor({
       setError("Format attendu : 1:37.317 ou 97.317 (trois décimales).");
       return;
     }
-    save({ ...lap, timeMs, valid });
+    try {
+      const parsed = parseSectors(sectors, timeMs);
+      save({ ...lap, timeMs, valid, sectors: parsed });
+    } catch (error) {
+      setError((error as Error).message);
+    }
   };
   return (
     <Modal title={`Modifier le tour ${lap.number}`} close={close}>
@@ -1527,6 +1697,7 @@ function LapEditor({
             aria-describedby="edit-lap-error"
           />
         </label>
+        <SectorInputs values={sectors} onChange={setSectors} />
         <label className="edit-validity">
           <input
             type="checkbox"

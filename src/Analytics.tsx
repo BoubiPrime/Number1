@@ -2,6 +2,8 @@ import { lazy, Suspense } from "react";
 import { Activity, ArrowRight, CircleHelp, Trophy } from "lucide-react";
 import {
   circuitKey,
+  compatibleSessions,
+  circuitLabel,
   consistency,
   delta,
   formatTime,
@@ -9,6 +11,7 @@ import {
   stats,
   type Session,
 } from "./model";
+import { AdvancedComparison } from "./AdvancedComparison";
 const ComparisonChart = lazy(() =>
   import("./LapChart").then((module) => ({ default: module.ComparisonChart })),
 );
@@ -217,15 +220,12 @@ export function SessionComparison({
 }) {
   const a = sessions.find((s) => s.id === selected[0]);
   const b = sessions.find((s) => s.id === selected[1]);
-  const comparable =
-    a && b && a.id !== b.id && circuitKey(a.circuit) === circuitKey(b.circuit);
+  const comparable = a && b && a.id !== b.id && compatibleSessions(a, b);
   const firstOptions = [...sessions].sort((a, b) =>
     b.date.localeCompare(a.date),
   );
   const secondOptions = a
-    ? firstOptions.filter(
-        (s) => s.id !== a.id && circuitKey(s.circuit) === circuitKey(a.circuit),
-      )
+    ? firstOptions.filter((s) => s.id !== a.id && compatibleSessions(s, a))
     : [];
   return (
     <div className="session-comparison">
@@ -234,8 +234,9 @@ export function SessionComparison({
           <div>
             <h2>Session Comparison</h2>
             <p>
-              Sélectionnez deux runs du même circuit. Les tours sont alignés par
-              numéro, sans interpolation.
+              Sélectionnez deux runs du même circuit et de la même
+              configuration. Les tours sont alignés par numéro, sans
+              interpolation.
             </p>
           </div>
         </div>
@@ -253,7 +254,7 @@ export function SessionComparison({
                         first.id,
                         ...(b &&
                         b.id !== first.id &&
-                        circuitKey(b.circuit) === circuitKey(first.circuit)
+                        compatibleSessions(b, first)
                           ? [b.id]
                           : []),
                       ]
@@ -264,7 +265,7 @@ export function SessionComparison({
               <option value="">Choisir une session</option>
               {firstOptions.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.circuit} · {s.car} · {dateLabel(s.date)} · {s.game} ·{" "}
+                  {circuitLabel(s)} · {s.car} · {dateLabel(s.date)} · {s.game} ·{" "}
                   {s.type}
                 </option>
               ))}
@@ -285,7 +286,7 @@ export function SessionComparison({
               <option value="">Choisir sur le même circuit</option>
               {secondOptions.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.circuit} · {s.car} · {dateLabel(s.date)} · {s.game} ·{" "}
+                  {circuitLabel(s)} · {s.car} · {dateLabel(s.date)} · {s.game} ·{" "}
                   {s.type}
                 </option>
               ))}
@@ -410,6 +411,7 @@ export function SessionComparison({
               <span className="invalid-legend">× Invalides</span>
             </div>
           </section>
+          <AdvancedComparison a={a} b={b} />
           <div className="panel comparison-delta">
             {(() => {
               const first = stats(a.laps).best,
