@@ -1,8 +1,11 @@
-# RaceLab v2.0 Pro Edition
+# RaceLab v2.0 Pro Edition — Analyse IA
 
-Compilation statique du commit source `e291a25c4e3d12e83c487f3f59ee1e5965aa339a` de BoubiPrime/Number1.
-Build : `npm run build` avec base `/Number1/`.
+Site : https://boubiprime.github.io/Number1/
 
-Les anciennes ressources hachées sont conservées pour les onglets déjà ouverts.
-Les données personnelles restent dans le navigateur sous `racelab.sessions.v1`.
-Exporter un JSON et fermer les anciens onglets avant de passer de la v1 à la v2.
+Version statique produite depuis le commit source `ae080abc478a23d15a85b3c5a05670ed7d3e1659`.
+
+L’interface Analyse IA est disponible ; son endpoint reste désactivé tant que le backend Cloudflare et les secrets serveur ne sont pas configurés. Aucune clé API ni donnée utilisateur n’est publiée dans cette branche. Les sessions restent dans le navigateur avec la clé existante `racelab.sessions.v1`.
+
+Base Vite : `/Number1/`. Seul le contenu de `dist/` est publié, avec le repli `404.html` et `.nojekyll`. Les anciens assets hachés sont conservés pour les onglets déjà ouverts.
+
+Vérifications avant livraison : TypeScript frontend/backend, 84 tests unitaires, 24 parcours navigateur, 1 parcours du build de production et 4 scénarios Workers/SQLite réussis. Les appels OpenAI sont simulés ; aucun appel réel sans clé.
