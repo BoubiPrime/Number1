@@ -1,6 +1,6 @@
 # RaceLab v2.0 Pro Edition
 
-Analyse de chronos simracing dans le navigateur : React, TypeScript, Vite, Tailwind CSS, Recharts et Lucide. Aucun compte, backend ou service de télémétrie. Le site public reste en v1 tant que la publication v2 n’a pas été autorisée et effectuée.
+Analyse de chronos simracing dans le navigateur : React, TypeScript, Vite, Tailwind CSS, Recharts et Lucide. Sessions stockées sur l’appareil, sans compte ni service de télémétrie. Site : **https://boubiprime.github.io/Number1/**. L’analyse IA facultative utilise un backend séparé ; toutes les autres fonctions restent autonomes.
 
 ## Fonctionnalités
 
@@ -14,8 +14,76 @@ Analyse de chronos simracing dans le navigateur : React, TypeScript, Vite, Tailw
 - Comparaison avancée : deux sessions compatibles, deux courbes, tableau tour par tour, secteurs, idéal et écarts de performance. Les différences de contexte et les conditions inconnues sont signalées.
 - Personal Records : référence valide par circuit/configuration, voiture, jeu, date et session source.
 - Import/export JSON, import CSV prévisualisé et protection contre les conflits entre onglets.
+- Analyse IA : sélection d’une session, performance descriptive, régularité /100, priorité, résumé de trois phrases et trois conseils. Déclenchement sur clic uniquement, relance explicite, états de chargement/erreur et mode non configuré.
 
 Les démos sont fictives, signalées et supprimables avec confirmation. Les données personnelles ne sont jamais ajoutées au code public. Aucune vitesse, trajectoire, pression de pneus ou mesure de freinage n’est inventée.
+
+## Activer l’Analyse IA — sans installation sur votre ordinateur
+
+Le site reste sur **GitHub Pages**. Seule l’IA nécessite un petit service **Cloudflare Workers**, car GitHub Pages ne peut pas garder une clé secrète côté serveur. L’API OpenAI est facturée séparément de ChatGPT ; un abonnement ChatGPT ne fournit pas de crédit API.
+
+Après validation et publication de cette modification :
+
+1. Dans **Cloudflare → Workers & Pages → Create → Import a repository**, connecter le dépôt GitHub `BoubiPrime/Number1`. Créer le Worker `racelab-ai`. Garder la racine du dépôt, laisser la commande de build vide et utiliser la commande de déploiement `npm run api:deploy`. Cloudflare installe les dépendances du dépôt. Le fichier `backend/wrangler.jsonc` configure le service et son compteur de quota persistant.
+2. Dans **le Worker `racelab-ai` → Settings → Variables and Secrets**, ajouter deux valeurs de type **Secret** : **`OPENAI_API_KEY`** (la clé créée dans votre projet OpenAI) et **`ANALYSIS_ACCESS_CODE`** (un autre code aléatoire de 32 à 128 caractères `A–Z`, `a–z`, `0–9`, `_` ou `-`, généré par un gestionnaire de mots de passe). Enregistrer/déployer cette configuration. **Ne mettre aucune de ces valeurs dans GitHub, dans le code, dans la configuration publique ni dans cette conversation.**
+3. Copier l’adresse HTTPS donnée par Cloudflare et lui ajouter `/analyze`, par exemple `https://racelab-ai.votre-compte.workers.dev/analyze`. Cet exemple n’est pas une adresse déjà déployée.
+4. Dans GitHub, modifier **`public/ai-config.json` sur la branche source** : remplacer la chaîne vide par cette URL, sans clé ni paramètre. Lors de la publication Pages, ce fichier devient **`ai-config.json` à la racine de `gh-pages`**. Après publication du nouveau frontend, cette URL peut aussi être modifiée directement dans ce fichier de `gh-pages` depuis GitHub ; reporter ensuite le changement dans `public/ai-config.json` pour le conserver au prochain build.
+5. Ouvrir RaceLab → **Analyse IA**. Choisir une session avec **au moins 3 tours valides**, saisir **le code d’accès IA**, puis cliquer sur **Analyser avec l’IA**. Le résultat doit afficher la performance, la régularité, la priorité et trois conseils. **La clé OpenAI ne se saisit jamais dans RaceLab.**
+
+Sans URL ou sans secrets serveur, un message « non configurée » apparaît et l’application continue de fonctionner. Le code d’accès reste seulement en mémoire pendant la visite de cette section ; il n’est pas enregistré dans LocalStorage, SessionStorage ou un cookie. Il est envoyé uniquement dans l’en-tête `Authorization` au backend HTTPS. Ce code distinct de la clé OpenAI limite l’usage de l’IA aux personnes à qui vous le donnez.
+
+**Si l’analyse ne démarre pas :** vérifier l’URL `/analyze`, les deux secrets, les crédits et l’accès API du projet OpenAI. `ALLOWED_ORIGIN` est déjà fixé à `https://boubiprime.github.io` (sans `/Number1/`). Un autre domaine doit être explicitement configuré côté serveur. Le backend refuse toute requête sans origine autorisée et sans code correct ; CORS seul n’est pas utilisé comme authentification.
+
+### API vérifiée et interprétation
+
+La référence officielle OpenAI consultée le **23 octobre 2026** documente bien **`POST /v1/decisions`**, les questions `choice`/`predicate` et le modèle **`gpt-6-luna`**. RaceLab utilise cet endpoint pour classer l’exécution, choisir une priorité et noter la pertinence des conseils candidats, **en un seul appel**. Les sources et les limites de vérification sont dans [docs/ai-api-verification.md](docs/ai-api-verification.md).
+
+Si ce modèle/API n’est pas accessible à votre projet OpenAI, définir **`OPENAI_API=responses`** dans les variables du Worker (et reporter ce choix dans `backend/wrangler.jsonc` pour les déploiements suivants). Ce mode utilise **`POST /v1/responses`**, `gpt-4.1-mini`, une sortie JSON structurée stricte, `store: false` et un maximum de 400 tokens de sortie. **Aucun basculement automatique ni appel de secours facturé.** Ne pas inventer un nom de modèle en modifiant le navigateur.
+
+La note de régularité est calculée côté serveur avec les fonctions statistiques existantes : `arrondi(max(0, 100 − 20 × (écart-type / moyenne × 100)))`. Une dispersion relative de 1 % donne 80/100. Ce barème est descriptif, pas une notation officielle du niveau du pilote. Les tours invalides sont exclus des statistiques de temps ; leur proportion reste visible.
+
+La performance est une appréciation IA de l’exécution **au sein de la session sélectionnée**, basée sur la dispersion, l’écart moyen au meilleur tour et la validité. Elle ne mesure pas la compétitivité absolue et ne compare aucun circuit à un autre. Les conseils sont sélectionnés parmi des propositions vérifiées et éligibles aux données ; le résumé est assemblé avec les chiffres calculés et la priorité choisie. Il ne s’agit pas d’un texte libre prétendant disposer de télémétrie. Aucun freinage, virage précis, incident, pneu, carburant ou résultat n’est déduit. Le modèle actuel ne stocke pas de position d’arrivée.
+
+### Données et coût
+
+- Le navigateur transmet uniquement le circuit/configuration, la voiture, le jeu, le type de session, l’indication démo et les chronos/validités/secteurs de la session choisie. Les identifiants, dates, notes/conditions libres, provenance CSV et autres sessions ne sont pas transmis.
+- Le serveur valide puis recalcule les agrégats. **OpenAI reçoit uniquement ces statistiques et le contexte utile**, jamais le tableau complet des tours. Les libellés circuit/voiture/jeu sont traités comme des données et non comme des instructions.
+- Le backend ne stocke ni sessions ni analyses et ne journalise pas les corps de requête. Seuls les compteurs de quota persistent. Les politiques de traitement et de conservation du fournisseur OpenAI s’appliquent ; l’API Decisions vérifiée n’expose pas de paramètre `store: false`, et le code n’en invente pas.
+- **2 appels maximum par minute et 20 par jour UTC pour tout le service**, même sur plusieurs instances serverless. `AI_DAILY_LIMIT` accepte de 1 à 100. Le compteur est atomique et persistant dans un Durable Object SQLite. Une erreur ou un délai dépassé après réservation consomme aussi un appel ; une panne de compteur empêche tout appel payant.
+- Aucun appel au chargement ou lors d’un changement de session, aucun retry automatique. **Relancer** consomme un nouvel appel. Annuler l’attente dans le navigateur n’annule pas forcément un appel déjà reçu par OpenAI. Les anciens résultats ne s’affichent pas sur une autre session.
+- Limites IA : **2 000 tours, 256 Kio, 160 caractères par libellé, 24 h maximum par chrono**, 25 s de délai fournisseur. Ces limites ne changent ni les données ni les limites des autres fonctions RaceLab. Le serveur refuse les fichiers invalides et les sorties IA inconnues ou incomplètes.
+- Les résultats restent en mémoire, avec un petit cache de cinq analyses pour les changements de sélection. Ils sont invalidés quand la session change et disparaissent quand on quitte la section ou recharge la page. Les sessions et exports JSON existants restent inchangés.
+
+### Développement du backend (facultatif)
+
+`.env.example` contient uniquement des noms et des valeurs non secrètes. Pour tester localement le backend, le copier dans **`backend/.dev.vars`**, fichier ignoré par Git, puis y saisir les secrets dans votre environnement privé. Ne jamais créer de variable `VITE_OPENAI_API_KEY` : les variables `VITE_*` sont publiques.
+
+```sh
+npm ci
+npm run api:dev       # Worker local sur le port 8787 ; sans secrets, renvoie « non configurée »
+npm run dev          # frontend, dans un second terminal
+npm run typecheck    # frontend ET backend
+npm test             # calculs, validation, contrats OpenAI, CORS, authentification, quotas
+npm run api:build     # compilation du Worker à blanc, aucune publication
+npm run test:worker   # vrai moteur Workers + SQLite, OpenAI simulé et réseau intercepté
+npm run build        # frontend GitHub Pages
+```
+
+Pour le développement uniquement, `public/ai-config.json` peut contenir `http://127.0.0.1:8787/analyze` et `ALLOWED_ORIGIN` doit correspondre à l’origine Vite choisie (exemple : `http://127.0.0.1:5173`). Les URL HTTP locales sont refusées dans le build de production. Remettre l’URL HTTPS ou la chaîne vide avant publication. Dans le cloud avec répertoire personnel non accessible : utiliser `XDG_CONFIG_HOME=/tmp/racelab-config WRANGLER_SEND_METRICS=false` devant les commandes `api:*`.
+
+**Validation de cette livraison :** les tests OpenAI utilisent des réponses simulées, sans frais. Aucun appel OpenAI réel n’a été exécuté faute de clé ; l’accès effectif de votre projet au modèle reste à vérifier après configuration. Le Worker local a été démarré et le mode sans clé vérifié. La préparation et les tests ne publient pas automatiquement cette fonctionnalité.
+
+Résultats : **84 tests unitaires**, **24 parcours navigateur**, **1 parcours du build sous `/Number1/`** et **4 scénarios dans le moteur Workers avec SQLite** réussis. TypeScript frontend/backend, build frontend et compilation Worker à blanc réussis. Les scénarios Workers vérifient également les appels concurrents, la persistance du quota après redémarrage et le refus des redirections. Une compilation avec deux valeurs sentinelles factices a confirmé qu’aucun secret serveur ni appel direct à OpenAI n’est présent dans les fichiers publics. Aucun lint n’est configuré.
+
+Fichiers de l’ajout IA :
+
+- Interface : `src/AiAnalysis.tsx`, `src/ai/client.ts`, `src/ai/contracts.ts` (créés) ; `src/App.tsx`, `src/styles.css` (modifiés).
+- Backend : `backend/worker.ts`, `backend/openai.ts`, `backend/analysis.ts`, `backend/wrangler.jsonc`, `backend/tsconfig.json` (créés).
+- Configuration : `public/ai-config.json`, `.env.example` (créés) ; `.gitignore`, `package.json`, `package-lock.json` (modifiés).
+- Tests : `src/ai.test.ts`, `backend/worker.test.ts`, `e2e/ai.spec.ts`, `scripts/test-worker.mjs` (créés) ; `deployment-tests/hosting.spec.ts` (modifié).
+- Documentation : ce `README.md` (modifié) et `docs/ai-api-verification.md` (créé).
+
+Les fichiers du modèle de sessions et du stockage existants sont inchangés. Aucune migration de données n’est nécessaire.
 
 ## Données, compatibilité et secteurs
 
@@ -121,7 +189,7 @@ Les tests couvrent les fonctions v1, les secteurs incohérents, les variantes in
 
 Le dépôt comporte le code source sur `main` et la version statique actuellement publiée sur `gh-pages`. **Ne pas pousser sur `gh-pages` sans accord** : cette branche déclenche la publication.
 
-La commande `npm run build` produit `dist/` avec les liens CSS/JS sous `/Number1/`. La navigation des pages reste interne à React : l’actualisation conserve les données, pas nécessairement la vue courante. Aucun compte ou serveur d’API n’est requis.
+La commande `npm run build` produit `dist/` avec les liens CSS/JS sous `/Number1/`. La navigation des pages reste interne à React : l’actualisation conserve les données, pas nécessairement la vue courante. Aucun compte ou serveur d’API n’est requis pour les fonctionnalités locales ; seule l’analyse IA utilise le Worker facultatif.
 
 Après autorisation de publication :
 
@@ -131,4 +199,4 @@ Après autorisation de publication :
 4. Pousser cette branche seulement après accord, puis vérifier le succès du déploiement Pages et l’application sur `https://boubiprime.github.io/Number1/` (ressources, actualisation, LocalStorage, CSV et secteurs).
 5. Exporter une sauvegarde avant la première utilisation de la v2 et fermer les anciens onglets v1. Le format JSON 2 n’est pas destiné à être réimporté dans la v1.
 
-Le build local ne constitue pas une vérification d’un nouveau déploiement public. Aucun déploiement v2 n’est effectué par cette préparation. La configuration Vercel historique reste disponible avec une surcharge de base `/` pour son build à la racine, mais n’est pas nécessaire à GitHub Pages.
+Le build local ne constitue pas une vérification d’un nouveau déploiement public. La livraison de l’interface IA conserve un endpoint vide tant que le backend sécurisé et ses secrets ne sont pas configurés : la publication du site ne suffit pas à activer OpenAI. La configuration Vercel historique reste disponible avec une surcharge de base `/` pour son build à la racine, mais n’est pas nécessaire à GitHub Pages. Ne jamais copier `.worker-build/`, `backend/`, `.env*` ou `.dev.vars*` sur `gh-pages` : seul `dist/` est public.

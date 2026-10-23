@@ -1,0 +1,13 @@
+# Référence OpenAI vérifiée pour RaceLab
+
+Vérification du 23 octobre 2026, avant implémentation. Les portails `developers.openai.com` et `platform.openai.com` renvoient 403 depuis cet environnement. Leur documentation n’a donc pas été prétendument consultée. La documentation et les définitions générées officielles accessibles dans **openai/openai-node**, version **7.43.0**, ont été lues directement. Révision du dépôt vérifiée : `4c11b87c3e5e4fcddeeffc85b55502b2296f49fd`.
+
+- [README officiel](https://github.com/openai/openai-node/blob/4c11b87c3e5e4fcddeeffc85b55502b2296f49fd/README.md) : « The primary API for interacting with OpenAI models is the Responses API ».
+- [Index de l’API](https://github.com/openai/openai-node/blob/4c11b87c3e5e4fcddeeffc85b55502b2296f49fd/api.md) : section **Decisions**, `POST /decisions`, méthode `client.decisions.create`.
+- [Contrat Decisions officiel](https://github.com/openai/openai-node/blob/4c11b87c3e5e4fcddeeffc85b55502b2296f49fd/src/resources/decisions.ts) : « Use this endpoint to quickly answer classification or scoring questions ». `model` indique « Only gpt-6-luna is supported ». Questions `choice` avec 2–255 valeurs uniques, `predicate` avec probabilité ; réponses nommées et refus possibles. RaceLab utilise les choix et classe les conseils éligibles par probabilité de pertinence. La probabilité n’est pas affichée comme une vérité ou une note de pilotage.
+- [Contrat Responses officiel](https://github.com/openai/openai-node/blob/4c11b87c3e5e4fcddeeffc85b55502b2296f49fd/src/resources/responses/responses.ts) : `text.format` / `json_schema` / `strict`, `store`, `max_output_tokens`, statut et items `message`/`output_text`/`refusal`.
+- [Modèles documentés](https://github.com/openai/openai-node/blob/4c11b87c3e5e4fcddeeffc85b55502b2296f49fd/src/resources/shared.ts) : `gpt-4.1-mini`, utilisé uniquement pour le mode Responses explicitement choisi côté serveur.
+
+Les requêtes REST utilisent `https://api.openai.com/v1/decisions` ou `/v1/responses`, avec Bearer côté serveur. Aucun SDK ni clé n’est ajouté au frontend. Pas d’endpoint inventé, pas d’option Responses appliquée à Decisions par supposition, pas de fallback automatique qui multiplierait les appels facturés.
+
+La disponibilité documentée d’un endpoint ne garantit pas l’accès du projet OpenAI de l’utilisateur. Sans clé dans cet environnement, les contrats et réponses ont été testés avec doubles de test ; aucune exécution payante ni disponibilité sur un compte réel n’est revendiquée. Les erreurs d’accès au modèle/API sont présentées proprement. La régularité est calculée mathématiquement, jamais prise dans une probabilité ou une échelle inconnue de l’API.

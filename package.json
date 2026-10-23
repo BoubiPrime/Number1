@@ -7,10 +7,14 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "vitest run src",
+    "test": "vitest run src backend",
     "test:e2e": "playwright test",
-    "typecheck": "tsc --noEmit",
-    "test:production": "playwright test --config playwright.production.config.ts"
+    "typecheck": "tsc --noEmit && tsc -p backend/tsconfig.json",
+    "test:production": "playwright test --config playwright.production.config.ts",
+    "api:dev": "wrangler dev --config backend/wrangler.jsonc --local --port 8787",
+    "api:build": "wrangler deploy --config backend/wrangler.jsonc --dry-run --outdir ../.worker-build",
+    "api:deploy": "wrangler deploy --config backend/wrangler.jsonc",
+    "test:worker": "npm run api:build && node scripts/test-worker.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.59.0",
@@ -19,6 +23,7 @@
     "recharts": "^3.10.1"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "5.20261023.1",
     "@playwright/test": "^1.64.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.3.0",
@@ -27,7 +32,8 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
-    "vitest": "^5.0.5"
+    "vitest": "^5.0.5",
+    "wrangler": "4.152.0"
   },
   "engines": {
     "node": "24.x"

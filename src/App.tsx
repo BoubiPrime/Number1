@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   Activity,
+  Bot,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -54,6 +55,7 @@ import { SectorInputs, SectorAnalysis } from "./Sectors";
 import { DriverProgress } from "./DriverProgress";
 import { DashboardProgress } from "./DashboardProgress";
 import { CsvImport } from "./CsvImport";
+import { AiAnalysis } from "./AiAnalysis";
 import {
   ConsistencyAnalysis,
   PersonalRecords,
@@ -77,7 +79,8 @@ type View =
   | "session"
   | "comparison"
   | "records"
-  | "progress";
+  | "progress"
+  | "ai";
 const dateLabel = (value: string) =>
   new Date(`${value}T12:00:00`).toLocaleDateString("fr-FR", {
     day: "numeric",
@@ -500,6 +503,14 @@ export default function App() {
             <Trophy size={19} />
             Records personnels
           </button>
+          <button
+            aria-label="Analyse IA"
+            className={view === "ai" ? "active" : ""}
+            onClick={() => setView("ai")}
+          >
+            <Bot size={19} />
+            Analyse IA
+          </button>
         </nav>
         <div className="sidebar-bottom">
           <div className="local-status">
@@ -509,7 +520,7 @@ export default function App() {
           <p>
             Vos données. Votre performance.
             <br />
-            Sans cloud, sans compromis.
+            Stockage local · IA à la demande.
           </p>
           <div className="driver">
             <div className="avatar">RL</div>
@@ -526,7 +537,9 @@ export default function App() {
           <div className="breadcrumb">
             Workspace <ChevronRight size={13} />
             <span>
-              {view === "progress"
+              {view === "ai"
+                ? "Analyse IA"
+                : view === "progress"
                 ? "Driver Progress"
                 : view === "comparison"
                   ? "Session Comparison"
@@ -578,7 +591,9 @@ export default function App() {
             <div>
               <div className="eyebrow">VOTRE PROCHAIN TOUR COMMENCE ICI</div>
               <h1>
-                {view === "progress"
+                {view === "ai"
+                  ? "🤖 Analyse IA"
+                  : view === "progress"
                   ? "Driver Progress"
                   : view === "comparison"
                     ? "Session Comparison"
@@ -591,7 +606,9 @@ export default function App() {
                           : "Chaque millième compte."}
               </h1>
               <p>
-                {view === "progress"
+                {view === "ai"
+                  ? "Transformez vos chronos en priorités pour le prochain relais."
+                  : view === "progress"
                   ? "Analysez votre évolution sur des configurations compatibles."
                   : view === "comparison"
                     ? "Deux sessions, une même piste. Comparez vos chronos dans leur contexte."
@@ -646,7 +663,9 @@ export default function App() {
               {backupError}
             </div>
           )}
-          {view === "progress" ? (
+          {view === "ai" ? (
+            <AiAnalysis sessions={sessions} open={open} />
+          ) : view === "progress" ? (
             <DriverProgress sessions={sessions} open={open} />
           ) : view === "comparison" ? (
             <SessionComparison

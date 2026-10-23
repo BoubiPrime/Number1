@@ -45,6 +45,13 @@ test("compilation statique : ressources, navigation, sauvegarde et restauration 
     "Vue d’ensemble",
   ])
     await page.getByRole("button", { name, exact: false }).first().click();
+  // Public configuration is also served under /Number1/, with AI disabled by default.
+  const aiConfig = await request.get("/Number1/ai-config.json");
+  expect(aiConfig.status()).toBe(200);
+  expect(await aiConfig.json()).toEqual({ endpoint: "" });
+  await page.getByRole("button", { name: "Analyse IA", exact: true }).click();
+  await expect(page.getByText("Analyse IA non configurée", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Analyser avec l’IA" })).toBeDisabled();
   await page
     .getByRole("button", { name: "Nouvelle session", exact: true })
     .click();

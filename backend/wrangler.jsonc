@@ -1,0 +1,17 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "racelab-ai",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-23",
+  "workers_dev": true,
+  "vars": {
+    "ALLOWED_ORIGIN": "https://boubiprime.github.io",
+    "OPENAI_API": "decisions",
+    "AI_DAILY_LIMIT": "20"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "ANALYSIS_QUOTA", "class_name": "AnalysisQuota" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AnalysisQuota"] }],
+  "observability": { "enabled": false }
+}

@@ -8,3 +8,10 @@ test-results/
 .vercel/
 .env.local
 .env.*.local
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+.wrangler/
+.worker-build/
